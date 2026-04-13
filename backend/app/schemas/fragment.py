@@ -15,7 +15,7 @@ class FragmentBase(BaseModel):
 
 
 class FragmentCreate(FragmentBase):
-    pass
+    facts: list[dict] | None = None
 
 
 class FragmentUpdate(BaseModel):

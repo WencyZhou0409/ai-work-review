@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 
 
@@ -15,7 +17,6 @@ async def test_create_project(client):
 
 @pytest.mark.asyncio
 async def test_list_projects(client):
-    # 先创建一个项目
     await client.post("/projects", json={"name": "测试项目", "goal": "测试目标"})
 
     response = await client.get("/projects")
@@ -72,11 +73,30 @@ async def test_generate_review_mock(client):
     create_resp = await client.post("/projects", json={"name": "复盘测试", "goal": ""})
     project_id = create_resp.json()["data"]["id"]
 
-    response = await client.post(
-        f"/projects/{project_id}/generate", json={"fragment_ids": []}
+    fragment_resp = await client.post(
+        "/fragments",
+        json={
+            "project_id": project_id,
+            "raw_content": "发现异常",
+            "source_type": "text",
+            "status": "active",
+            "facts": [{"category": "background", "fact": "DAU 下降 5%"}],
+        },
     )
+    fragment_id = fragment_resp.json()["data"]["id"]
+
+    mock_content = (
+        "[视角 A：汇报模式]\n"
+        "针对 DAU 下降 5% 的问题，进行了策略优化。\n\n"
+        "[视角 B：简历模式]\n"
+        "- 【数据分析】负责定位 DAU 下降原因，推动策略优化。"
+    )
+    with patch("app.services.review_service.chat_completion", return_value=mock_content):
+        response = await client.post(
+            f"/projects/{project_id}/generate", json={"fragment_ids": [fragment_id]}
+        )
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
-    assert "report_mode" in data["data"]
-    assert "resume_mode" in data["data"]
+    assert "DAU 下降 5%" in data["data"]["report_mode"]
+    assert "数据分析" in data["data"]["resume_mode"]

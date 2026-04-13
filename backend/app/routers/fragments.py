@@ -85,5 +85,10 @@ async def delete_fragment_endpoint(
 async def extract_facts_endpoint(
     body: ExtractRequest, db: AsyncSession = Depends(get_db)
 ):
-    facts_data = await extract_facts(body.raw_text, body.project_id)
+    try:
+        facts_data = await extract_facts(body.raw_text, body.project_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=503, detail="AI 处理超时或失败，请重试")
     return ResponseModel(data=ExtractResponse(facts=facts_data))

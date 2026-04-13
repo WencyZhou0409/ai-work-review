@@ -81,5 +81,10 @@ async def generate_review_endpoint(
     body: GenerateReviewRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await generate_review(project_id, body.fragment_ids, db)
+    try:
+        result = await generate_review(project_id, body.fragment_ids, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=503, detail="AI 处理超时或失败，请重试")
     return ResponseModel(data=result)
