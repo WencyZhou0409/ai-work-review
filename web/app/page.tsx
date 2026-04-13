@@ -1,101 +1,152 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useState } from "react";
+import type { Fragment, Project, ReviewResult } from "@/app/types";
+import {
+  createProject,
+  generateReview,
+  listFragments,
+  listProjects,
+  updateFragment,
+} from "@/lib/api";
+import FragmentFeed from "./components/FragmentFeed";
+import OutputPanel from "./components/OutputPanel";
+import Sidebar from "./components/Sidebar";
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(
+    null
+  );
+  const [fragments, setFragments] = useState<Fragment[]>([]);
+  const [selectedFragmentIds, setSelectedFragmentIds] = useState<number[]>([]);
+  const [result, setResult] = useState<ReviewResult | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  useEffect(() => {
+    if (selectedProjectId == null) return;
+    loadFragments(selectedProjectId);
+    setResult(null);
+    setSelectedFragmentIds([]);
+  }, [selectedProjectId]);
+
+  async function loadProjects() {
+    try {
+      const data = await listProjects();
+      setProjects(data);
+      if (data.length > 0 && selectedProjectId == null) {
+        setSelectedProjectId(data[0].id);
+      }
+      setError(null);
+    } catch (e: any) {
+      setError(e.message || "加载项目失败");
+    }
+  }
+
+  async function loadFragments(projectId: number) {
+    try {
+      const data = await listFragments(projectId);
+      setFragments(data);
+      setError(null);
+    } catch (e: any) {
+      setError(e.message || "加载碎片失败");
+    }
+  }
+
+  async function handleCreateProject(name: string, goal: string) {
+    try {
+      const project = await createProject({ name, goal });
+      setProjects((prev) => [project, ...prev]);
+      setSelectedProjectId(project.id);
+    } catch (e: any) {
+      setError(e.message || "创建项目失败");
+    }
+  }
+
+  function handleToggleSelect(id: number) {
+    setSelectedFragmentIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
+  async function handleToggleStatus(fragment: Fragment) {
+    const nextStatus = fragment.status === "active" ? "ignored" : "active";
+    try {
+      await updateFragment(fragment.id, { status: nextStatus });
+      setFragments((prev) =>
+        prev.map((f) =>
+          f.id === fragment.id ? { ...f, status: nextStatus } : f
+        )
+      );
+      if (nextStatus === "ignored") {
+        setSelectedFragmentIds((prev) => prev.filter((x) => x !== fragment.id));
+      }
+    } catch (e: any) {
+      setError(e.message || "更新状态失败");
+    }
+  }
+
+  async function handleGenerate() {
+    if (selectedProjectId == null || selectedFragmentIds.length === 0) return;
+    setGenerating(true);
+    try {
+      const data = await generateReview(selectedProjectId, selectedFragmentIds);
+      setResult(data);
+    } catch (e: any) {
+      setError(e.message || "生成复盘失败");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  return (
+    <div className="h-screen flex flex-col bg-white">
+      <header className="h-14 border-b flex items-center px-4 bg-white shrink-0">
+        <h1 className="font-semibold text-lg text-gray-800">
+          AI 工作复盘助手
+        </h1>
+      </header>
+
+      {error && (
+        <div className="px-4 py-2 bg-red-50 text-red-600 text-sm border-b">
+          {error}
+          <button
+            onClick={() => setError(null)}
+            className="ml-2 underline"
           >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+            关闭
+          </button>
+        </div>
+      )}
+
+      <main className="flex-1 flex overflow-hidden">
+        <Sidebar
+          projects={projects}
+          selectedId={selectedProjectId}
+          onSelect={setSelectedProjectId}
+          onCreate={handleCreateProject}
+        />
+        <div className="flex-1 flex flex-col lg:flex-row min-w-0">
+          <div className="flex-1 min-w-0">
+            <FragmentFeed
+              fragments={fragments}
+              selectedIds={selectedFragmentIds}
+              onToggleSelect={handleToggleSelect}
+              onToggleStatus={handleToggleStatus}
+              onGenerate={handleGenerate}
+              generating={generating}
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+          </div>
+          <div className="lg:w-[420px] xl:w-[480px] shrink-0 h-64 lg:h-auto">
+            <OutputPanel result={result} />
+          </div>
         </div>
       </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
     </div>
   );
 }
