@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-**阶段 2: 数据层与接口设计** — 已完成
+**阶段 3: 后端 AI 引擎与核心业务逻辑** — 已完成
 
 ## 已完成的工作
 
@@ -21,20 +21,30 @@
 - [x] 编写 pytest 测试（9 个测试全部通过）
 - [x] 本地启动服务验证 Swagger 文档可访问
 - [x] 提交阶段 2 代码到 Git
+- [x] 接入真实 Supabase PostgreSQL 数据库，运行 `alembic upgrade head` 成功建表
+- [x] 封装 Kimi API 调用客户端（`backend/app/services/llm.py`）
+- [x] 解决 `api.kimi.com/coding/` 端点的 User-Agent 白名单兼容问题
+- [x] 实现真实的 `POST /fragments/extract`（Prompt1：碎片提取）
+- [x] 实现真实的 `POST /projects/{id}/generate`（Prompt2：复盘重组）
+- [x] 更新 fragment 创建流程，支持可选 facts 批量入库
+- [x] 修复 Alembic `env.py` 对 `%` 密码的解析问题
+- [x] 修复 `FragmentFactOut` 的 `created_at` 默认值缺失导致的验证错误
+- [x] 更新测试以 mock LLM 调用，11 个测试全部通过
+- [x] 真实 API 端到端验证通过
+- [x] 提交阶段 3 代码到 Git
 
 ## 待完成/待注意
 
-- [ ] 配置真实的 PostgreSQL 数据库后，运行 `alembic upgrade head` 执行首版迁移建表
-- [ ] 将 `.env` 中的 `DATABASE_URL` 改为真实的 PostgreSQL 连接（目前 `.env` 保留模板值）
-- [ ] 将 `KIMI_API_KEY` 填入 `.env`
+- [x] `.env` 已配置真实数据库连接和 `KIMI_API_KEY`（已加入 `.gitignore`，不会提交）
+- [ ] 清理可能残留的旧 uvicorn 进程（如有）
 
 ## 下一阶段计划
 
-**阶段 3: 后端 AI 引擎与核心业务逻辑**
-- 封装 Kimi API 调用客户端（`backend/app/services/llm.py`）
-- 实现真正的 `POST /fragments/extract`（Prompt1：碎片提取）
-- 实现真正的 `POST /projects/{id}/generate`（Prompt2：复盘重组）
-- 接入真实数据库，确保端到端流程可跑通
+**阶段 4: Web 主平台端（深度管理与复盘）**
+- 左侧边栏：项目/标签列表，支持新建（名称 + 核心目标）、编辑
+- 右侧工作区：按 Tag 筛选的碎片 Feed 流（来源 Icon、时间戳、核心要素）
+- 碎片卡片：支持 Checkbox 勾选/取消，支持"丢弃"标记
+- 输出区：点击"生成复盘"后，展示"汇报模式"和"简历模式"双栏/双卡片，支持一键复制
 
 ## 当前阻塞点
 
@@ -42,6 +52,6 @@
 
 ## 下次对话建议切入点
 
-直接开始 **阶段 3：后端 AI 引擎与核心业务逻辑**。开始之前，请确保：
-1. 本地或云端已有一个可用的 PostgreSQL 数据库；
-2. `backend/.env` 中已填入正确的 `DATABASE_URL` 和你的 `KIMI_API_KEY`。
+直接开始 **阶段 4：Web 主平台端**。开始之前，请确保：
+1. 后端服务 `uvicorn app.main:app --reload` 可以正常启动并访问 `http://localhost:8000/docs`；
+2. Web 端 `cd web && npm run dev` 可以正常启动（ Next.js 已在阶段 1 初始化）。
