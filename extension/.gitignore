@@ -1,0 +1,17 @@
+# Build outputs
+build/
+.plasmo/
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+
+# System files
+.DS_Store
+Thumbs.db

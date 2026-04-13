@@ -1,6 +1,6 @@
 import type { ApiResponse, Fragment, Project, ReviewResult } from "@/app/types";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 async function request<T>(
   path: string,
