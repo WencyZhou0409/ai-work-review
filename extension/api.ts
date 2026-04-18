@@ -1,4 +1,4 @@
-const BASE_URL = "http://localhost:8002";
+const BASE_URL = "https://ai-work-review.onrender.com";
 
 async function request<T>(
   path: string,

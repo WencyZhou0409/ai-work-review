@@ -124,6 +124,97 @@ Web 勾选碎片 → POST /projects/{id}/generate
 
 ---
 
+### 6. 生产部署：Render 后端踩坑全记录
+
+**部署目标**：将 FastAPI 后端部署到 Render（Web Service + 免费 PostgreSQL）。
+
+#### 6.1 Render 默认 Python 3.14 导致依赖编译失败
+**问题**：Render 默认使用 Python 3.14.3，`pydantic-core` 没有预编译的 wheel，pip 被迫从源码编译，需要 Rust 工具链，Render 免费环境不支持，报错 `maturin failed`。
+
+**解决**：
+1. 在仓库根目录创建 `runtime.txt`，内容：`python-3.11.9`
+2. 在 Render Environment 中添加 `PYTHON_VERSION=3.11.9` 作为双保险
+3. 重新部署后日志显示 `Using Python version 3.11.9`，构建通过
+
+#### 6.2 asyncpg 不识别 `sslmode` URL 参数
+**问题**：`DATABASE_URL` 末尾带 `?sslmode=require` 时，asyncpg 报错 `TypeError: connect() got an unexpected keyword argument 'sslmode'`。
+
+**解决**：去掉 URL 中的 `?sslmode=require`，改为在代码里通过 `create_async_engine(connect_args={"ssl": True})` 传递 SSL 配置。
+
+#### 6.3 Render 免费实例无法连接 Supabase（网络阻断）
+**问题**：使用 Supabase 数据库时，Render 容器报 `OSError: [Errno 101] Network is unreachable`，说明 Render 免费实例到外网 5432/6543 端口被防火墙阻断。
+
+**解决**：放弃 Supabase，改用 **Render 自家的免费 PostgreSQL**（New + → PostgreSQL）。Web Service 和数据库在同一内网，不存在网络阻断。
+
+#### 6.4 Render 内部 PG 自签名证书导致 SSL 握手失败
+**问题**：连上 Render PG 后报错 `ssl.SSLCertVerificationError: certificate verify failed: self-signed certificate`。
+
+**解决**：在 `app/db/base.py` 中创建自定义 SSLContext，关闭主机名校验和证书验证（仅用于 Render 内网可信环境）：
+```python
+_ssl_context = ssl.create_default_context()
+_ssl_context.check_hostname = False
+_ssl_context.verify_mode = ssl.CERT_NONE
+connect_args = {"ssl": _ssl_context}
+```
+
+#### 6.5 Swagger 字段名不一致
+**问题**：Swagger 自动生成的 Example Value 使用 `raw_content`，但后端实际接口要求字段名为 `raw_text`，导致测试时 422 报错。
+
+**解决**：手动修改请求体为 `"raw_text": "..."` 后测试通过。后续可统一前后端字段命名。
+
+---
+
+### 7. 生产部署：Vercel 前端踩坑全记录
+
+**部署目标**：将 Next.js Web 前端部署到 Vercel。
+
+#### 7.1 Vercel 未自动识别 Next.js 框架
+**问题**：Vercel 导入项目时 Application Preset 为空，导致构建完成后报错 `Error: No Output Directory named "public" found`，回退到了静态站点模式。
+
+**解决**：在 `web/` 目录下创建 `vercel.json`，内容：`{"framework": "nextjs"}`，明确告诉 Vercel 这是 Next.js 项目。重新部署后构建成功。
+
+#### 7.2 CORS 配置
+**问题**：前端部署到 Vercel 后，浏览器请求 Render 后端被 CORS 拦截。
+
+**解决**：在 Render 后端环境变量中，将 `CORS_ORIGINS` 从 `*` 改为 Vercel 的真实域名（如 `https://ai-work-review-zeta.vercel.app`），然后重新部署后端。
+
+**部署结果**：
+- 前端域名：`https://ai-work-review-zeta.vercel.app`
+- 后端域名：`https://ai-work-review.onrender.com`
+- 前后端联调验证通过
+
+---
+
+### 8. 插件本地加载方法（自用，免上架 Chrome Web Store）
+
+如果只是自己使用，**无需支付 $5 注册费，无需截图和隐私政策，无需等待审核**。
+
+#### 步骤
+1. **确保插件 API 地址指向生产后端**
+   编辑 `extension/api.ts`，确认 `BASE_URL = "https://ai-work-review.onrender.com"`
+
+2. **构建生产版本**
+   ```bash
+   cd extension
+   npm run build
+   ```
+   产物在 `extension/build/chrome-mv3-prod/` 目录下。
+
+3. **Chrome 加载插件**
+   - 打开 `chrome://extensions/`
+   - 右上角开启 **开发者模式**
+   - 点击 **加载已解压的扩展程序**
+   - 选择 `extension/build/chrome-mv3-prod/` 文件夹
+
+4. **完成**：插件图标出现在浏览器右上角，点击即可使用。
+
+#### 后续更新插件
+如果修改了插件代码，需要：
+1. 重新构建：`cd extension && npm run build`
+2. 回到 `chrome://extensions/`，点击插件卡片上的 **🔄 刷新按钮**
+
+---
+
 ## 六、当前状态
 
 **MVP 核心功能已 100% 完成，并通过了端到端手动验收。**
