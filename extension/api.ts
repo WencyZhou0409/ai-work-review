@@ -1,4 +1,4 @@
-const BASE_URL = "http://localhost:8001";
+const BASE_URL = "http://localhost:8002";
 
 async function request<T>(
   path: string,

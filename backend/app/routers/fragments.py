@@ -20,9 +20,15 @@ from app.schemas import (
     FragmentUpdate,
     ResponseModel,
 )
+from app.core.config import settings
 from app.services.ai_extract_service import extract_facts
 
 router = APIRouter(prefix="/fragments", tags=["Fragments"])
+
+
+@router.get("/debug-env", include_in_schema=False)
+async def debug_env():
+    return {"app_env": settings.APP_ENV, "anthropic_key_exists": bool(settings.ANTHROPIC_API_KEY)}
 
 
 @router.post("", response_model=ResponseModel[FragmentOut])
@@ -89,6 +95,30 @@ async def extract_facts_endpoint(
         facts_data = await extract_facts(body.raw_text, body.project_id, db)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except Exception:
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        if settings.APP_ENV == "development":
+            # 开发环境降级返回 mock 提取结果，便于端到端验证
+            from datetime import datetime, timezone
+            from app.schemas.fragment_fact import FragmentFactOut
+
+            mock_facts = [
+                FragmentFactOut(
+                    id=0,
+                    fragment_id=0,
+                    category="策略/动作",
+                    fact_text=f"【开发环境模拟】从输入内容中提取到关键动作。",
+                    created_at=datetime.now(timezone.utc),
+                ),
+                FragmentFactOut(
+                    id=0,
+                    fragment_id=0,
+                    category="其他洞察",
+                    fact_text="（真实 AI 提取请配置有效的 KIMI_API_KEY 并设置 APP_ENV=production）",
+                    created_at=datetime.now(timezone.utc),
+                ),
+            ]
+            return ResponseModel(data=ExtractResponse(facts=mock_facts))
         raise HTTPException(status_code=503, detail="AI 处理超时或失败，请重试")
     return ResponseModel(data=ExtractResponse(facts=facts_data))

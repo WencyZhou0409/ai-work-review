@@ -3,51 +3,116 @@ import { createFragment, extractFacts, listProjects, type ExtractedFact, type Pr
 
 const LAST_PROJECT_KEY = "last_project_id"
 
-function useSpeechRecognition(onResult: (text: string) => void) {
+function useSpeechRecognition(
+  onResult: (text: string) => void,
+  onError: (error: string) => void
+) {
   const [recording, setRecording] = useState(false)
+  const [interimText, setInterimText] = useState("")
   const recognitionRef = useRef<any>(null)
 
-  const start = () => {
+  const start = async () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognition) {
-      alert("您的浏览器不支持语音输入")
+      onError("浏览器不支持语音识别")
       return
     }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach((track) => track.stop())
+    } catch (err: any) {
+      let errorMsg = "麦克风权限被拒绝。请在弹出的权限提示中点击「允许」。"
+      if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+        errorMsg = "未找到麦克风设备，请检查硬件连接"
+      } else if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        errorMsg = "麦克风权限被拒绝。请在浏览器地址栏的权限图标中允许麦克风，或前往 chrome://settings/content/microphone 允许本扩展访问。"
+      }
+      onError(errorMsg)
+      return
+    }
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop()
+      } catch (e) {}
+    }
+
     const recognition = new SpeechRecognition()
     recognition.lang = "zh-CN"
     recognition.continuous = true
     recognition.interimResults = true
+    recognitionRef.current = recognition
 
-    recognition.onresult = (event: any) => {
-      let final = ""
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          final += event.results[i][0].transcript
-        }
-      }
-      if (final) onResult(final)
+    let finalTranscript = ""
+    let lastInterim = ""
+
+    recognition.onstart = () => {
+      setRecording(true)
+      setInterimText("")
     }
 
-    recognition.onerror = (e: any) => {
-      console.error("Speech error:", e)
+    recognition.onresult = (event: any) => {
+      let interim = ""
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript
+        } else {
+          interim += transcript
+        }
+      }
+      lastInterim = interim
+      setInterimText(finalTranscript + lastInterim)
+    }
+
+    recognition.onerror = (event: any) => {
+      let errorMsg = event.error || "语音识别出错"
+      if (event.error === "not-allowed") {
+        errorMsg = "麦克风权限被拒绝。请在浏览器地址栏的权限图标中允许麦克风，或前往 chrome://settings/content/microphone 允许本扩展访问。"
+      } else if (event.error === "network") {
+        errorMsg = "网络连接异常，语音识别服务暂不可用"
+      } else if (event.error === "no-speech") {
+        errorMsg = "未检测到语音输入，请靠近麦克风重试"
+      } else if (event.error === "audio-capture") {
+        errorMsg = "未找到麦克风设备，请检查硬件连接"
+      }
+      onError(errorMsg)
       setRecording(false)
+      setInterimText("")
+      recognitionRef.current = null
     }
 
     recognition.onend = () => {
+      const text = finalTranscript + lastInterim
+      if (text.trim()) {
+        onResult(text.trim())
+      }
       setRecording(false)
+      setInterimText("")
+      recognitionRef.current = null
     }
 
-    recognition.start()
-    recognitionRef.current = recognition
-    setRecording(true)
+    try {
+      recognition.start()
+    } catch (e) {
+      onError("启动语音识别失败")
+      setRecording(false)
+    }
   }
 
   const stop = () => {
-    recognitionRef.current?.stop()
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop()
+      } catch (e) {}
+      recognitionRef.current = null
+    }
     setRecording(false)
+    setInterimText("")
   }
 
-  return { recording, start, stop }
+  return { recording, start, stop, interimText }
 }
 
 function IndexPopup() {
@@ -60,9 +125,14 @@ function IndexPopup() {
   const [error, setError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const { recording, start, stop } = useSpeechRecognition((text) => {
-    setRawText((prev) => (prev ? prev + " " + text : text))
-  })
+  const { recording, start, stop, interimText } = useSpeechRecognition(
+    (text) => {
+      setRawText((prev) => (prev ? prev + "\n" + text : text))
+    },
+    (err) => {
+      setError(err)
+    }
+  )
 
   useEffect(() => {
     textareaRef.current?.focus()
@@ -140,14 +210,14 @@ function IndexPopup() {
         width: 360,
         minHeight: 280,
         padding: 16,
-        fontFamily: "system-ui, -apple-system, sans-serif",
+        fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
         fontSize: 14,
-        color: "#1f2937",
-        background: "#fff",
-        boxSizing: "border-box",
+        color: '#0f172a',
+        background: '#f8fafc',
+        boxSizing: 'border-box',
       }}
     >
-      <h2 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 600 }}>
+      <h2 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 600, color: '#0f172a' }}>
         AI 工作复盘助手
       </h2>
 
@@ -155,11 +225,12 @@ function IndexPopup() {
         <div
           style={{
             marginBottom: 10,
-            padding: "8px 10px",
-            background: "#fef2f2",
-            color: "#b91c1c",
-            borderRadius: 6,
+            padding: '8px 10px',
+            background: 'rgba(239,68,68,0.08)',
+            color: '#b91c1c',
+            borderRadius: 8,
             fontSize: 13,
+            border: '1px solid rgba(239,68,68,0.15)',
           }}
         >
           {error}
@@ -167,18 +238,19 @@ function IndexPopup() {
       )}
 
       {step === "success" && (
-        <div style={{ textAlign: "center", padding: "24px 0" }}>
+        <div style={{ textAlign: 'center', padding: '24px 0' }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
-          <div style={{ fontWeight: 500, marginBottom: 12 }}>已确认入库</div>
+          <div style={{ fontWeight: 500, marginBottom: 12, color: '#0f172a' }}>已确认入库</div>
           <button
             onClick={handleReset}
             style={{
-              padding: "8px 16px",
-              borderRadius: 6,
-              border: "none",
-              background: "#4f46e5",
-              color: "#fff",
-              cursor: "pointer",
+              padding: '8px 16px',
+              borderRadius: 8,
+              border: 'none',
+              background: '#4f46e5',
+              color: '#fff',
+              cursor: 'pointer',
+              fontWeight: 500,
             }}
           >
             再记一条
@@ -189,19 +261,20 @@ function IndexPopup() {
       {step !== "success" && (
         <>
           <div style={{ marginBottom: 10 }}>
-            <label style={{ display: "block", fontSize: 13, color: "#4b5563", marginBottom: 4 }}>
+            <label style={{ display: 'block', fontSize: 13, color: '#475569', marginBottom: 4 }}>
               所属项目
             </label>
             <select
               value={selectedProjectId}
               onChange={(e) => handleProjectChange(Number(e.target.value))}
               style={{
-                width: "100%",
-                padding: "8px 10px",
-                borderRadius: 6,
-                border: "1px solid #d1d5db",
+                width: '100%',
+                padding: '8px 10px',
+                borderRadius: 8,
+                border: '1px solid #e2e8f0',
                 fontSize: 14,
-                background: "#fff",
+                background: '#fff',
+                color: '#0f172a',
               }}
             >
               <option value="" disabled>
@@ -217,7 +290,7 @@ function IndexPopup() {
 
           {step === "input" && (
             <>
-              <div style={{ position: "relative", marginBottom: 12 }}>
+              <div style={{ position: 'relative', marginBottom: 12 }}>
                 <textarea
                   ref={textareaRef}
                   value={rawText}
@@ -225,33 +298,35 @@ function IndexPopup() {
                   placeholder="随手记录工作碎片…"
                   rows={5}
                   style={{
-                    width: "100%",
-                    padding: "10px 36px 10px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #d1d5db",
+                    width: '100%',
+                    padding: '10px 36px 10px 10px',
+                    borderRadius: 10,
+                    border: '1px solid #e2e8f0',
                     fontSize: 14,
-                    resize: "vertical",
-                    boxSizing: "border-box",
+                    resize: 'vertical',
+                    boxSizing: 'border-box',
                     lineHeight: 1.5,
+                    background: '#fff',
+                    color: '#0f172a',
                   }}
                 />
                 <button
                   onClick={recording ? stop : start}
                   title={recording ? "停止录音" : "语音输入"}
                   style={{
-                    position: "absolute",
+                    position: 'absolute',
                     right: 8,
                     bottom: 8,
                     width: 28,
                     height: 28,
-                    borderRadius: "50%",
-                    border: "none",
-                    background: recording ? "#ef4444" : "#e5e7eb",
-                    color: recording ? "#fff" : "#374151",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
+                    borderRadius: '50%',
+                    border: 'none',
+                    background: recording ? '#ef4444' : '#e2e8f0',
+                    color: recording ? '#fff' : '#334155',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     fontSize: 14,
                   }}
                 >
@@ -259,19 +334,34 @@ function IndexPopup() {
                 </button>
               </div>
 
+              {recording && (
+                <div style={{ marginBottom: 8, fontSize: 12, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#ef4444', animation: 'pulse 1s infinite' }} />
+                  正在聆听…{interimText ? ` "${interimText}"` : ""}
+                </div>
+              )}
+
+              <style>{`
+                @keyframes pulse {
+                  0% { opacity: 1; }
+                  50% { opacity: 0.4; }
+                  100% { opacity: 1; }
+                }
+              `}</style>
+
               <button
                 onClick={handleExtract}
                 disabled={!selectedProjectId || !rawText.trim() || loading}
                 style={{
-                  width: "100%",
-                  padding: "10px 0",
+                  width: '100%',
+                  padding: '10px 0',
                   borderRadius: 8,
-                  border: "none",
-                  background: !selectedProjectId || !rawText.trim() || loading ? "#c7c7c7" : "#4f46e5",
-                  color: "#fff",
+                  border: 'none',
+                  background: !selectedProjectId || !rawText.trim() || loading ? '#cbd5e1' : '#4f46e5',
+                  color: '#fff',
                   fontSize: 14,
                   fontWeight: 500,
-                  cursor: !selectedProjectId || !rawText.trim() || loading ? "not-allowed" : "pointer",
+                  cursor: !selectedProjectId || !rawText.trim() || loading ? 'not-allowed' : 'pointer',
                 }}
               >
                 {loading ? "智能提取中…" : "智能提取"}
@@ -282,18 +372,19 @@ function IndexPopup() {
           {step === "review" && (
             <>
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 13, color: "#4b5563", marginBottom: 6 }}>
+                <div style={{ fontSize: 13, color: '#475569', marginBottom: 6 }}>
                   提取结果（可手动修改）
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {facts.map((f, idx) => (
                     <div
                       key={idx}
                       style={{
-                        padding: "8px 10px",
-                        background: "#f3f4f6",
-                        borderRadius: 6,
+                        padding: '8px 10px',
+                        background: 'rgba(238,242,255,0.7)',
+                        borderRadius: 8,
                         fontSize: 13,
+                        border: '1px solid rgba(199,210,254,0.4)',
                       }}
                     >
                       <input
@@ -304,14 +395,14 @@ function IndexPopup() {
                           setFacts(next)
                         }}
                         style={{
-                          width: "100%",
+                          width: '100%',
                           fontWeight: 600,
-                          color: "#4f46e5",
-                          background: "transparent",
-                          border: "none",
-                          borderBottom: "1px dashed #d1d5db",
+                          color: '#4338ca',
+                          background: 'transparent',
+                          border: 'none',
+                          borderBottom: '1px dashed #cbd5e1',
                           marginBottom: 4,
-                          padding: "2px 0",
+                          padding: '2px 0',
                           fontSize: 13,
                         }}
                       />
@@ -323,11 +414,11 @@ function IndexPopup() {
                           setFacts(next)
                         }}
                         style={{
-                          width: "100%",
-                          color: "#374151",
-                          background: "transparent",
-                          border: "none",
-                          padding: "2px 0",
+                          width: '100%',
+                          color: '#334155',
+                          background: 'transparent',
+                          border: 'none',
+                          padding: '2px 0',
                           fontSize: 13,
                         }}
                       />
@@ -336,19 +427,19 @@ function IndexPopup() {
                 </div>
               </div>
 
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
                 <button
                   onClick={() => setStep("input")}
                   disabled={loading}
                   style={{
                     flex: 1,
-                    padding: "10px 0",
+                    padding: '10px 0',
                     borderRadius: 8,
-                    border: "1px solid #d1d5db",
-                    background: "#fff",
-                    color: "#374151",
+                    border: '1px solid #e2e8f0',
+                    background: '#fff',
+                    color: '#334155',
                     fontSize: 14,
-                    cursor: "pointer",
+                    cursor: 'pointer',
                   }}
                 >
                   返回修改
@@ -358,14 +449,14 @@ function IndexPopup() {
                   disabled={loading}
                   style={{
                     flex: 1,
-                    padding: "10px 0",
+                    padding: '10px 0',
                     borderRadius: 8,
-                    border: "none",
-                    background: "#4f46e5",
-                    color: "#fff",
+                    border: 'none',
+                    background: '#4f46e5',
+                    color: '#fff',
                     fontSize: 14,
                     fontWeight: 500,
-                    cursor: loading ? "not-allowed" : "pointer",
+                    cursor: loading ? 'not-allowed' : 'pointer',
                   }}
                 >
                   {loading ? "入库中…" : "确认入库"}

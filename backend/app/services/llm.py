@@ -8,12 +8,30 @@ import httpx
 from app.core.config import settings
 
 
-async def chat_completion(
+async def _chat_completion_anthropic(
+    messages: list[dict[str, str]],
+    temperature: float = 0.3,
+) -> str:
+    from anthropic import AsyncAnthropic
+
+    client = AsyncAnthropic(
+        api_key=settings.ANTHROPIC_API_KEY,
+        base_url=settings.ANTHROPIC_BASE_URL or None,
+    )
+    response = await client.messages.create(
+        model=settings.ANTHROPIC_MODEL,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=4096,
+    )
+    return response.content[0].text
+
+
+async def _chat_completion_openai(
     messages: list[dict[str, str]],
     temperature: float = 0.3,
     response_format: dict[str, str] | None = None,
 ) -> str:
-    """调用兼容 OpenAI 接口的 LLM 服务。"""
     headers = {
         "Authorization": f"Bearer {settings.KIMI_API_KEY}",
         "Content-Type": "application/json",
@@ -34,6 +52,17 @@ async def chat_completion(
         response.raise_for_status()
         data = response.json()
         return data["choices"][0]["message"]["content"]
+
+
+async def chat_completion(
+    messages: list[dict[str, str]],
+    temperature: float = 0.3,
+    response_format: dict[str, str] | None = None,
+) -> str:
+    """调用 LLM 服务。优先使用 Anthropic SDK（兼容 Kimi 代理），否则 fallback 到 OpenAI 兼容接口。"""
+    if settings.ANTHROPIC_API_KEY:
+        return await _chat_completion_anthropic(messages, temperature)
+    return await _chat_completion_openai(messages, temperature, response_format)
 
 
 def build_extract_prompt(project_name: str, project_goal: str | None, raw_text: str) -> str:

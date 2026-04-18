@@ -1,6 +1,6 @@
 import type { ApiResponse, Fragment, Project, ReviewResult } from "@/app/types";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8002";
 
 async function request<T>(
   path: string,
@@ -40,6 +40,20 @@ export async function listFragments(projectId: number): Promise<Fragment[]> {
   return res.data;
 }
 
+export async function createFragment(payload: {
+  project_id: number;
+  raw_content: string;
+  source_type: string;
+  status: string;
+  facts?: { category: string; fact: string }[];
+}): Promise<Fragment> {
+  const res = await request<Fragment>("/fragments", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
 export async function updateFragment(
   id: number,
   payload: Partial<Fragment>
@@ -49,6 +63,12 @@ export async function updateFragment(
     body: JSON.stringify(payload),
   });
   return res.data;
+}
+
+export async function deleteProject(projectId: number): Promise<void> {
+  await request<void>(`/projects/${projectId}`, {
+    method: "DELETE",
+  });
 }
 
 export async function generateReview(

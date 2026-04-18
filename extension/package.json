@@ -21,6 +21,9 @@
     "typescript": "5.3.3"
   },
   "manifest": {
+    "permissions": [
+      "offscreen"
+    ],
     "host_permissions": [
       "http://localhost:*/",
       "https://*/"

@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     KIMI_API_KEY: str = ""
     KIMI_BASE_URL: str = "https://api.moonshot.cn/v1"
     KIMI_MODEL: str = "moonshot-v1-8k"
+
+    # Anthropic 兼容配置（如 Kimi 的 coding 代理）
+    ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_BASE_URL: str = ""
+    ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20240620"
+
     APP_ENV: str = "development"
     CORS_ORIGINS: str = "http://localhost:3000,chrome-extension://*"
 
